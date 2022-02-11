@@ -1,0 +1,340 @@
+#!markdown
+
+# Index and Range parameters
+
+#!markdown
+
+Index and Ranges were introduced in C#8, they can ease a lot when you must get a subrange of an array or list:
+
+#!csharp
+
+var arr = Enumerable.Range(1,100).ToArray();
+Console.WriteLine($"[{string.Join(",",arr[10..15])}]");
+Console.WriteLine(arr[^1]);
+var list = new List<int>(arr);
+Console.WriteLine(list[^1]);
+Console.WriteLine(list[^5]);
+
+#!markdown
+
+When you wanted a subrange of an IEnumerable, you should do something like:
+
+#!csharp
+
+list.Skip(10).Take(5)
+
+#!csharp
+
+list.Take(10..15)
+
+#!markdown
+
+Or take the last 10 elements with
+
+#!csharp
+
+list.Take(^10..)
+
+#!markdown
+
+You can also take a single element with ElementAt using Indices. To get the last element in the list, you can use:
+
+#!csharp
+
+list.ElementAt(^1)
+
+#!markdown
+
+# Chunking
+
+#!markdown
+
+If you want to split the data in blocks of seven elements, you can do:
+
+#!csharp
+
+var chunked = list.Chunk(7);
+chunked
+
+#!markdown
+
+And you can get one chunk with
+
+#!csharp
+
+var fourth = chunked.ElementAt(3);
+var last = chunked.ElementAt(^1);
+display(fourth);
+display(last);
+
+#!markdown
+
+# Zipping
+
+#!markdown
+
+For example, if you have these three enumerables:
+
+#!csharp
+
+var list1 = Enumerable.Range(1,100).Select(i => $"ID {i}").ToList();
+var list2 = Enumerable.Range(1,100).Select(i => $"Name {i}").ToList();
+var list3 = Enumerable.Range(1,100).Select(i => $"Address {i}").ToList();
+
+#!markdown
+
+You can combine it into an IEnumerable of tuples with three elements each with:
+
+#!csharp
+
+var zipped = list1.Zip(list2,list3);
+zipped
+
+#!markdown
+
+One note, here: in .NET 5 you could use a function to zip two sequences int another one and generate anything else than a tuple. .NET 6 didn’t change that and, if you want to zip the three IEnumerables into an IEnumerable of a class, for example, you must still do something like this:
+
+#!csharp
+
+var zipped1 = list1.Zip(list2, (l1, l2) => new { ID = l1, Name = l2 })
+    .Zip(list3, (l1, l2) => new { ID = l1.ID, Name = l1.Name, Address = l2 });
+zipped1
+
+#!markdown
+
+# DistinctBy, ExceptBy, UnionBy, InterceptBy
+
+#!markdown
+
+One thing that I use a lot is the distinct operator, to get unique values in a sequence. Until now, when I had a class and wanted to get distinct values in a class by some field, and I’m not interested in the other fields, I had to do something like:
+
+#!csharp
+
+public record Person(string Name, int Age);
+var people = new List<Person>
+{
+    new Person("John", 30 ),
+    new Person("Peter", 40),
+    new Person("Mary", 20 ),
+    new Person("Jane", 30 ),
+    new Person("Larry", 50),
+    new Person("Anne", 50 ),
+    new Person("Paul", 20),
+};
+var distinctByAge = people.GroupBy(p => p.Age).Select(g => g.Key);
+distinctByAge
+
+#!markdown
+
+That worked fine, but lacked clarity – the intent was not explicit and it was hard to understand – Why this GroupBy is there ?
+In .NET 6, the DistinctBy comes to solve that. Now, you can use something like this to get the distinct values :
+
+#!csharp
+
+var distinctAges = people.DistinctBy(p => p.Age).Select(p => p.Age);
+distinctAges
+
+#!markdown
+
+Now the intent is clear and the code is easier to follow.
+You can also use ExceptBy, to filter a sequence depending on another, like in
+
+#!csharp
+
+var excludedAges = new List<int> {30,40};
+var people1 = people.ExceptBy(excludedAges, p => p.Age);
+people1
+
+#!markdown
+
+One note, here. Due to the way ExceptBy is coded (it uses a HashSet), it will only add the first duplicate element in the result. In our code, it should show:
+
+```csharp
+Person { Name = Mary, Age = 20 }
+Person { Name = Larry, Age = 50 }
+Person { Name = Anne, Age = 50 }
+Person { Name = Paul, Age = 20 }
+```
+
+But it only shows:
+```csharp
+Person { Name = Mary, Age = 20 }
+Person { Name = Larry, Age = 50 }
+```
+If you want all items that don’t match the excluded ages, you should still go with:
+
+#!csharp
+
+var people2 = people.Where(p => !excludedAges.Contains(p.Age));
+people2
+
+#!markdown
+
+If you want to join two sequences, removing duplicates between them, you can use the UnionBy method. This code joins the two lists into another, removing the duplicates:
+
+#!csharp
+
+var people3 = new List<Person>
+{
+    new Person("John", 20 ),
+    new Person("Peter", 25),
+    new Person("Paul", 20 ),
+    new Person("Ringo", 22 ),
+    new Person("George", 23),
+    new Person("Anne", 50 ),
+    new Person("Mark", 20),
+};
+var people4 = people.UnionBy(people3, p => p.Name);
+people4
+
+#!markdown
+
+If you want the have the names present in both lists, you can use the IntersectBy method:
+
+#!csharp
+
+var includedAges = new List<int> {30,40};
+var people5 = people.IntersectBy(includedAges, p => p.Age);
+people5
+
+#!markdown
+
+In the same way of the ExceptBy, the duplicates are not included. If you want to include them, you should use:
+
+#!csharp
+
+var people6 = people.Where(p => includedAges.Contains(p.Age));
+people6
+
+#!markdown
+
+# MaxBy and MinBy
+When using the methods Max and Min, the sequences should implement the IComparable interface, so they could be compared and the maximum and minimum evaluated. That posed a problem, especially if the class you wanted to compare didn’t implement the IComparable interface. Now, with MinBy and MaxBy you don’t have to use the IComparable and can use something like:
+
+#!csharp
+
+var minByAge = people.MinBy(p => p.Age);
+var maxByAge = people.MaxBy(p => p.Age);
+display(minByAge);
+display(maxByAge);
+
+#!markdown
+
+This code won’t show all the elements with minimum age. To get that, you should use something like
+
+#!csharp
+
+var minAge = people.Select(p => p.Age).Min();
+var allMinByAge = people.Where(p => p.Age == minAge);
+var maxAge = people.Select(p => p.Age).Max();
+var allMaxByAge = people.Where(p => p.Age == maxAge);
+display(allMinByAge);
+
+#!markdown
+
+# FirstOrDefault, LastOrDefault, SingleOrDefault with a default parameter
+These three functions returned Default(T) if the element was not found or the list was empty. This could pose a problem or extra checks if the element was not found. Now, we can set a default value when the element is not found and, in this case, we don’t have to deal with null checks:
+
+#!csharp
+
+var firstOrDefault = people.FirstOrDefault(p => p.Age == 25,new Person("Unknown",25));
+var lastOrDefault = people.LastOrDefault(p => p.Age == 25,new Person("Unknown",25));
+var singleOrDefault = people.SingleOrDefault(p => p.Age == 25,new Person("Unknown",25));
+display(firstOrDefault);
+display(lastOrDefault);
+display(singleOrDefault);
+
+#!markdown
+
+In all the three cases, the code will return a Person with name Unknown and Age = 25
+
+#!markdown
+
+# TryGetNonEnumeratedCount
+When you have an IEnumerable and you use the Count() method, it will enumerate the collection, even if it has another method to get the count in another way, thus penalizing the performance. For that, .NET 6 implemented the TryGetNonEnumeratedCount method to try to use another method to get the count, if available. This function will return true if a faster method was available, or false, if not. That way, you can take an action to use something more performant and avoid multiple enumerations. For example:
+
+#!csharp
+
+IEnumerable<Person> people7 = people;
+Console.WriteLine(people7.TryGetNonEnumeratedCount(out int count));
+
+#!markdown
+
+Will return true, because The List implements the Count property to get the count. When  you have an IEnumerable, result of a Linq operation, like in
+
+#!csharp
+
+var people6 = people.Where(p => includedAges.Contains(p.Age));
+Console.WriteLine(people6.TryGetNonEnumeratedCount(out int count1));
+
+#!markdown
+
+It will return false and the count1 variable will have the actual count of the sequence.
+
+#!markdown
+
+# Mixing languages
+
+You can also mix languages in an Interactive Notebook
+
+#!fsharp
+
+type person = {Name: string; Age: int}
+
+let people = [
+    {Name = "John"; Age = 30 };
+    {Name = "Peter"; Age = 40};
+    {Name = "Mary"; Age = 20 };
+    {Name = "Jane"; Age = 30 };
+    {Name = "Larry"; Age = 50};
+    {Name = "Anne"; Age = 50 };
+    {Name = "Paul"; Age = 20};
+]
+
+people |> List.distinctBy(fun p -> p.Age) |> List.map(fun p -> p.Age)
+
+#!javascript
+
+const people = [
+    {Name: "John", Age: 30 },
+    {Name: "Peter", Age: 40},
+    {Name: "Mary", Age: 20 },
+    {Name: "Jane", Age: 30 },
+    {Name: "Larry", Age: 50},
+    {Name: "Anne", Age: 50 },
+    {Name: "Paul", Age: 20}
+]
+const distinctBy = people.reduce((acc, p) => {
+    acc[p["Age"]] = acc[p["Age"]] ?  acc[p["Age"]] + 1 : 1;
+    return acc;
+}, {});
+console.log(distinctBy);
+
+#!csharp
+
+#!value --from-url https://raw.githubusercontent.com/ageron/handson-ml2/master/datasets/housing/housing.csv --name housingPath
+
+#!csharp
+
+using Microsoft.Data.Analysis;
+using Microsoft.ML;
+using System.Collections.Generic;
+
+var housingData = DataFrame.LoadCsv(housingPath);
+housingData.ExploreWithSandDance().Display();
+
+#!csharp
+
+#!value --from-url https://northwind.vercel.app/api/suppliers --name suppliersJson
+
+#!csharp
+
+#!share --from value suppliersJson
+#r "nuget:Newtonsoft.Json"
+
+using Newtonsoft.Json;
+
+public record Address(string Street, string City, string Region, string PostalCode, string Country, string Phone);
+public record Supplier(string Id, string CompanyName, string ContactName, string ContactTitle, Address Address);
+var suppliers = JsonConvert.DeserializeObject<List<Supplier>>(suppliersJson);
+suppliers
